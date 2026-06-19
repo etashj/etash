@@ -2,7 +2,7 @@ use std::io::{Write, stdin, stdout};
 mod lexer;
 use crate::lexer::{
     InputState::Open,
-    Openable::{Dquote, Quote},
+    Openable::{Dquote, Quote, Word},
     PartialState,
 };
 use lexer::tokenize;
@@ -31,6 +31,7 @@ fn main() {
             match reason {
                 Quote => print!("quote> "),
                 Dquote => print!("dquote> "),
+                Word => print!("> "),
             }
             let _ = stdout().flush();
 
