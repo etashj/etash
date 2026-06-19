@@ -1,11 +1,10 @@
 use std::io::{Write, stdin, stdout};
-mod lexer;
-use crate::lexer::{
+
+use etash::lexer::{
     InputState::Open,
     Openable::{Dquote, Quote, Word},
-    PartialState,
+    PartialState, tokenize,
 };
-use lexer::tokenize;
 
 fn read_line() -> String {
     let mut s = String::new();
