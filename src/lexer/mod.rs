@@ -10,6 +10,8 @@ use itertools::multipeek;
 use token::InputState::{Closed, Open};
 use word::{finish_word, merge_seam};
 
+use crate::lexer::{Openable::CmdAnd, Openable::CmdOr};
+
 pub fn tokenize(
     input: &str,
     existing_tokens: &mut Option<Vec<Token>>,
@@ -139,5 +141,9 @@ pub fn tokenize(
         }
     }
 
-    (tokens, Closed)
+    match tokens.last() {
+        Some(Token::And) => return (tokens, Open(CmdAnd)),
+        Some(Token::Or) => return (tokens, Open(CmdOr)),
+        _ => return (tokens, Closed),
+    }
 }

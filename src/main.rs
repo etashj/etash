@@ -2,7 +2,7 @@ use std::io::{Write, stdin, stdout};
 
 use etash::lexer::{
     InputState::Open,
-    Openable::{Dquote, Quote, Word},
+    Openable::{CmdAnd, CmdOr, Dquote, Quote, Word},
     PartialState, tokenize,
 };
 
@@ -31,6 +31,8 @@ fn main() {
                 Quote => print!("quote> "),
                 Dquote => print!("dquote> "),
                 Word => print!("> "),
+                CmdAnd => print!("cmdand> "),
+                CmdOr => print!("cmdor> "),
             }
             let _ = stdout().flush();
 

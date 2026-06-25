@@ -3,6 +3,8 @@ pub enum Openable {
     Dquote,
     Quote,
     Word, // mid-word backslash-newline continuation
+    CmdAnd,
+    CmdOr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
