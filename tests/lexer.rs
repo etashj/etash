@@ -1,36 +1,34 @@
-#[cfg(test)]
-mod tests {
-    use Token::*;
-    use WordSegment::*;
-    use etash::lexer::*;
+use etash::lexer::*;
+use Token::*;
+use WordSegment::*;
 
-    /// Feeds `lines` through `tokenize` one at a time, threading partial
-    /// state the same way main.rs does, and returns the final result.
-    /// Panics if input runs out while still Open (test bug, not lexer bug).
-    fn tokenize_lines(lines: &[&str]) -> (Vec<Token>, InputState) {
-        let mut existing = None;
-        let mut partial = PartialState::None;
-        let mut iter = lines.iter();
+/// Feeds `lines` through `tokenize` one at a time, threading partial
+/// state the same way main.rs does, and returns the final result.
+/// Panics if input runs out while still Open (test bug, not lexer bug).
+fn tokenize_lines(lines: &[&str]) -> (Vec<Token>, InputState) {
+    let mut existing = None;
+    let mut partial = PartialState::None;
+    let mut iter = lines.iter();
 
-        let first = iter.next().expect("need at least one line");
-        let (mut tokens, mut status) = tokenize(first, &mut existing, &mut partial);
+    let first = iter.next().expect("need at least one line");
+    let (mut tokens, mut status) = tokenize(first, &mut existing, &mut partial);
 
-        for line in iter {
-            if !matches!(status, InputState::Open(_)) {
-                panic!("tokenize closed early, but more lines were supplied");
-            }
-            existing = Some(tokens);
-            (tokens, status) = tokenize(line, &mut existing, &mut partial);
+    for line in iter {
+        if !matches!(status, InputState::Open(_)) {
+            panic!("tokenize closed early, but more lines were supplied");
         }
-        (tokens, status)
+        existing = Some(tokens);
+        (tokens, status) = tokenize(line, &mut existing, &mut partial);
     }
+    (tokens, status)
+}
 
-    /// Convenience for the common single-line case.
-    fn tokenize_line(line: &str) -> (Vec<Token>, InputState) {
-        tokenize_lines(&[line])
-    }
+fn tokenize_line(line: &str) -> (Vec<Token>, InputState) {
+    tokenize_lines(&[line])
+}
 
-    // ---- bare words ----
+mod bare_words {
+    use super::*;
 
     #[test]
     fn single_word() {
@@ -52,8 +50,10 @@ mod tests {
             ]
         );
     }
+}
 
-    // ---- metacharacters ----
+mod metacharacters {
+    use super::*;
 
     #[test]
     fn pipe_and_or() {
@@ -86,53 +86,68 @@ mod tests {
             ]
         );
     }
+}
 
-    // ---- quotes ----
+mod quotes {
+    use super::*;
 
     #[test]
-    fn single_quote_literal() {
+    fn single_quote_is_literal() {
         let (tokens, status) = tokenize_line("'hello there'");
         assert_eq!(status, InputState::Closed);
         assert_eq!(tokens, vec![Word(vec![Literal("hello there".into())])]);
     }
 
     #[test]
-    fn double_quote_expandable() {
+    fn double_quote_is_expandable() {
         let (tokens, status) = tokenize_line("\"hello there\"");
         assert_eq!(status, InputState::Closed);
         assert_eq!(tokens, vec![Word(vec![Expandable("hello there".into())])]);
     }
 
     #[test]
-    fn quote_embedded_in_word_joins_one_token() {
-        // echo "hellot there"  should be: [echo] ["hellot there"]
-        let (tokens, _) = tokenize_line(r#"echo "hellot there""#);
+    fn quote_after_space_is_own_token() {
+        let (tokens, _) = tokenize_line(r#"echo "hello there""#);
         assert_eq!(
             tokens,
             vec![
                 Word(vec![Expandable("echo".into())]),
-                Word(vec![Expandable("hellot there".into())]),
+                Word(vec![Expandable("hello there".into())]),
             ]
         );
     }
 
     #[test]
-    fn word_prefixed_quote_joins_into_one_word() {
+    fn quote_mid_word_joins_into_one_token() {
         // abc"def" -> single word, not two
         let (tokens, _) = tokenize_line(r#"abc"def""#);
         assert_eq!(
             tokens,
             vec![Word(vec![
                 Expandable("abc".into()),
-                Expandable("def".into())
+                Expandable("def".into()),
             ])]
         );
     }
 
-    // ---- escapes ----
+    #[test]
+    fn unterminated_double_quote_reports_open() {
+        let (_, status) = tokenize_line("\"hello");
+        assert_eq!(status, InputState::Open(Openable::Dquote));
+    }
 
     #[test]
-    fn backslash_escapes_space_joins_words() {
+    fn unterminated_single_quote_reports_open() {
+        let (_, status) = tokenize_line("'hello");
+        assert_eq!(status, InputState::Open(Openable::Quote));
+    }
+}
+
+mod escapes {
+    use super::*;
+
+    #[test]
+    fn backslash_space_joins_two_words_into_one() {
         let (tokens, _) = tokenize_line(r"foo\ bar");
         assert_eq!(
             tokens,
@@ -147,7 +162,6 @@ mod tests {
     #[test]
     fn double_quote_escape_sequences() {
         let (tokens, _) = tokenize_line(r#""a\"b\\c\$d""#);
-        // \" -> ", \\ -> \, \$ -> $, rest literal text stays Expandable
         assert_eq!(
             tokens,
             vec![Word(vec![
@@ -161,8 +175,10 @@ mod tests {
             ])]
         );
     }
+}
 
-    // ---- multi-line resumption ----
+mod multiline {
+    use super::*;
 
     #[test]
     fn double_quote_spans_lines() {
@@ -179,22 +195,10 @@ mod tests {
     }
 
     #[test]
-    fn trailing_backslash_continues_word_across_lines() {
+    fn trailing_backslash_continues_word_without_newline() {
         // foo\<newline>bar should join into "foobar" (no embedded newline)
         let (tokens, status) = tokenize_lines(&["foo\\\n", "bar"]);
         assert_eq!(status, InputState::Closed);
         assert_eq!(tokens, vec![Word(vec![Expandable("foobar".into())])]);
-    }
-
-    #[test]
-    fn unterminated_double_quote_reports_open() {
-        let (_, status) = tokenize_line("\"hello");
-        assert_eq!(status, InputState::Open(Openable::Dquote));
-    }
-
-    #[test]
-    fn unterminated_single_quote_reports_open() {
-        let (_, status) = tokenize_line("'hello");
-        assert_eq!(status, InputState::Open(Openable::Quote));
     }
 }
