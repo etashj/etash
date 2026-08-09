@@ -1,11 +1,11 @@
 mod builtin;
 mod redir;
 
+extern crate libc;
+
 use crate::lexer::WordSegment;
 use crate::parser::ast::{AST, Redirect};
 use crate::shell::Shell;
-
-extern crate libc;
 
 use std::os::unix::process::CommandExt;
 use std::process::Command;
@@ -14,16 +14,16 @@ use std::process::Command;
 pub fn reap_jobs(shell: &mut Shell) {
     let done: Vec<u32> = shell
         .iter_jobs_mut()
-        .filter_map(|(pid, child)| match child.try_wait() {
-            Ok(Some(_)) => Some(*pid),
+        .filter_map(|(pid, job, child)| match child.try_wait() {
+            Ok(Some(_)) => Some(pid),
             _ => None,
         })
         .collect();
 
     for pid in done {
-        if let Some(mut child) = shell.remove_ps(pid) {
+        if let Some((job, mut child)) = shell.remove_pid(pid) {
             let code = child.wait().map(|s| s.code().unwrap_or(1)).unwrap_or(1);
-            println!("[done] pid={pid} exit={code}");
+            println!("[{job}] done  pid={pid} exit={code}");
         }
     }
 }
@@ -31,37 +31,23 @@ pub fn reap_jobs(shell: &mut Shell) {
 /// Executes an AST node and returns the exit status.
 pub fn execute(ast: &AST, shell: &mut Shell) -> i32 {
     match ast {
-        AST::Pipeline(v) => {
-            return 1;
-        }
+        AST::Pipeline(_v) => 1,
         AST::Sequence(v) => {
             let mut last = 0;
-
             for a in v {
                 last = execute(a, shell);
             }
-
-            return last;
+            last
         }
         AST::And(b1, b2) => {
             let res = execute(b1, shell);
-            if res == 0 {
-                return execute(b2, shell);
-            } else {
-                return res;
-            }
+            if res == 0 { execute(b2, shell) } else { res }
         }
         AST::Or(b1, b2) => {
             let res = execute(b1, shell);
-            if res != 0 {
-                return execute(b2, shell);
-            } else {
-                return res;
-            }
+            if res != 0 { execute(b2, shell) } else { res }
         }
-        AST::Subshell(b) => {
-            return 1;
-        }
+        AST::Subshell(_b) => 1,
         AST::Background(b) => {
             if let AST::Command { argv, redirs } = b.as_ref() {
                 return run_cmd(shell, argv, redirs, true);
@@ -69,6 +55,33 @@ pub fn execute(ast: &AST, shell: &mut Shell) -> i32 {
             1
         }
         AST::Command { argv, redirs } => run_cmd(shell, argv, redirs, false),
+    }
+}
+
+/// Waits on a spawned child, handling stop (Ctrl+Z) by adding it to the job
+/// table. Returns the exit/signal status.
+pub fn wait_foreground(shell: &mut Shell, child: std::process::Child) -> i32 {
+    let pid = child.id() as libc::pid_t;
+    // Store child so we can move it into the job table if it stops.
+    let mut child = Some(child);
+
+    loop {
+        let mut wstatus: libc::c_int = 0;
+        let ret = unsafe { libc::waitpid(pid, &mut wstatus, libc::WUNTRACED) };
+        if ret == -1 {
+            return 1;
+        }
+        if libc::WIFEXITED(wstatus) {
+            return libc::WEXITSTATUS(wstatus);
+        }
+        if libc::WIFSTOPPED(wstatus) {
+            let job = shell.add_job(child.take().unwrap());
+            eprintln!("[{job}] stopped  pid={pid}");
+            return 128 + libc::WSTOPSIG(wstatus);
+        }
+        if libc::WIFSIGNALED(wstatus) {
+            return 128 + libc::WTERMSIG(wstatus);
+        }
     }
 }
 
@@ -110,8 +123,9 @@ fn run_cmd(
     if bg {
         match cmd.spawn() {
             Ok(c) => {
-                println!("[running] pid={} {}", c.id(), expanded_argv[0]);
-                shell.add_ps(c);
+                let pid = c.id();
+                let job = shell.add_job(c);
+                println!("[{job}] running  pid={pid} {}", expanded_argv[0]);
                 0
             }
             Err(e) => {
@@ -120,8 +134,16 @@ fn run_cmd(
             }
         }
     } else {
-        let code = cmd.status().map(|s| s.code().unwrap_or(1)).unwrap_or(127);
-        shell.status = code;
-        code
+        match cmd.spawn() {
+            Ok(child) => {
+                let code = wait_foreground(shell, child);
+                shell.status = code;
+                code
+            }
+            Err(e) => {
+                eprintln!("{}: {}", expanded_argv[0], e);
+                127
+            }
+        }
     }
 }

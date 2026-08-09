@@ -16,7 +16,11 @@ use crate::lexer::WordSegment;
 pub struct Shell {
     vars: HashMap<String, String>,
     exported: HashSet<String>,
-    processes: HashMap<u32, Child>,
+    /// pid → (job_num, Child)
+    processes: HashMap<u32, (u32, Child)>,
+    /// job_num → pid
+    jobs: HashMap<u32, u32>,
+    next_job: u32,
     pub cwd: PathBuf,
     /// Exit status of the last foreground command ($?).
     pub status: i32,
@@ -35,6 +39,8 @@ impl Shell {
             vars: HashMap::new(),
             exported: HashSet::new(),
             processes: HashMap::new(),
+            jobs: HashMap::new(),
+            next_job: 1,
             cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
             status: 0,
         };
@@ -94,16 +100,40 @@ impl Shell {
         self.exported.insert(name);
     }
 
-    pub fn add_ps(&mut self, c: Child) {
-        self.processes.insert(c.id(), c);
+    /// Adds a child to the job table and returns its job number.
+    pub fn add_job(&mut self, child: Child) -> u32 {
+        let job = self.next_job;
+        self.next_job += 1;
+        let pid = child.id();
+        self.jobs.insert(job, pid);
+        self.processes.insert(pid, (job, child));
+        job
     }
 
-    pub fn remove_ps(&mut self, pid: u32) -> Option<Child> {
-        self.processes.remove(&pid)
+    pub fn remove_job(&mut self, job: u32) -> Option<Child> {
+        let pid = self.jobs.remove(&job)?;
+        self.processes.remove(&pid).map(|(_, c)| c)
     }
 
-    pub fn iter_jobs_mut(&mut self) -> impl Iterator<Item = (&u32, &mut Child)> {
-        self.processes.iter_mut()
+    pub fn remove_pid(&mut self, pid: u32) -> Option<(u32, Child)> {
+        if let Some((job, child)) = self.processes.remove(&pid) {
+            self.jobs.remove(&job);
+            Some((job, child))
+        } else {
+            None
+        }
+    }
+
+    pub fn job_pid(&self, job: u32) -> Option<u32> {
+        self.jobs.get(&job).copied()
+    }
+
+    pub fn last_job(&self) -> Option<u32> {
+        self.jobs.keys().copied().max()
+    }
+
+    pub fn iter_jobs_mut(&mut self) -> impl Iterator<Item = (u32, u32, &mut Child)> {
+        self.processes.iter_mut().map(|(pid, (job, child))| (*pid, *job, child))
     }
 
     pub fn from_vars(vars: &[(&str, &str)]) -> Self {
@@ -111,6 +141,8 @@ impl Shell {
             vars: HashMap::new(),
             exported: HashSet::new(),
             processes: HashMap::new(),
+            jobs: HashMap::new(),
+            next_job: 1,
             cwd: PathBuf::from("/"),
             status: 0,
         };
