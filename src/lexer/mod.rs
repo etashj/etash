@@ -79,14 +79,17 @@ pub fn tokenize(
         PartialState::None => {}
     }
 
+    let mut after_space = true;
     while let Some(&c) = chars.peek() {
         chars.reset_peek();
         match c {
             ' ' | '\t' | '\n' => {
                 chars.next();
+                after_space = true;
             }
             '|' => {
                 chars.next();
+                after_space = false;
                 if chars.peek() == Some(&'|') {
                     chars.next();
                     tokens.push(Token::Or);
@@ -97,6 +100,7 @@ pub fn tokenize(
             }
             '&' => {
                 chars.next();
+                after_space = false;
                 if chars.peek() == Some(&'&') {
                     chars.next();
                     tokens.push(Token::And);
@@ -107,7 +111,8 @@ pub fn tokenize(
             }
             '>' => {
                 chars.next();
-                let fd = pop_digit_word(&mut tokens);
+                let fd = if !after_space { pop_digit_word(&mut tokens) } else { None };
+                after_space = false;
                 if chars.peek() == Some(&'>') {
                     chars.next();
                     tokens.push(Token::RedirectAppend(fd));
@@ -122,21 +127,26 @@ pub fn tokenize(
             }
             '<' => {
                 chars.next();
+                after_space = false;
                 tokens.push(Token::RedirectIn);
             }
             ';' => {
                 chars.next();
+                after_space = false;
                 tokens.push(Token::Semicolon);
             }
             '(' => {
                 chars.next();
+                after_space = false;
                 tokens.push(Token::LParen);
             }
             ')' => {
                 chars.next();
+                after_space = false;
                 tokens.push(Token::RParen);
             }
             _ => {
+                after_space = false;
                 // bare word, possibly containing embedded quotes/escapes
                 let mut buf = Vec::new();
                 if let Some(open) = finish_word(&mut chars, &mut buf, &mut tokens, partial) {
