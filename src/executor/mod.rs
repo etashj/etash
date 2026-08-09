@@ -11,6 +11,19 @@ use std::os::unix::io::FromRawFd;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
+fn glob_expand(word: String) -> Vec<String> {
+    if !word.contains(['*', '?', '[']) {
+        return vec![word];
+    }
+    let matches: Vec<String> = glob::glob(&word)
+        .into_iter()
+        .flatten()
+        .filter_map(|p| p.ok())
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    if matches.is_empty() { vec![word] } else { matches }
+}
+
 /// Polls all background jobs and reaps any that have finished.
 pub fn reap_jobs(shell: &mut Shell) {
     let done: Vec<u32> = shell
@@ -129,6 +142,7 @@ fn run_pipeline(shell: &mut Shell, cmds: &[AST]) -> i32 {
         let expanded_argv: Vec<String> = argv
             .iter()
             .map(|w| shell.expand_word(w))
+            .flat_map(glob_expand)
             .collect();
 
         if expanded_argv.is_empty() { continue; }
@@ -185,6 +199,7 @@ fn run_cmd(
     let expanded_argv: Vec<String> = argv
         .iter()
         .map(|word_vec| shell.expand_word(word_vec.as_slice()))
+        .flat_map(glob_expand)
         .collect();
 
     if expanded_argv.is_empty() {
