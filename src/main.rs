@@ -1,4 +1,5 @@
 use std::io::{Write, stdin, stdout};
+extern crate libc;
 
 use etash::executor::{execute, reap_jobs};
 use etash::lexer::{
@@ -8,6 +9,16 @@ use etash::lexer::{
 };
 use etash::parser::parse;
 use etash::shell::Shell;
+
+fn format_cwd(shell: &etash::shell::Shell) -> String {
+    let cwd = shell.cwd.to_string_lossy();
+    if let Some(home) = shell.get("HOME") {
+        if let Some(rest) = cwd.strip_prefix(home) {
+            return format!("~{rest}");
+        }
+    }
+    cwd.into_owned()
+}
 
 fn read_line() -> String {
     let mut s = String::new();
@@ -20,12 +31,19 @@ fn read_line() -> String {
 }
 
 fn main() {
+    // Shell ignores Ctrl+C and Ctrl+\ — children get them via the terminal pgrp
+    unsafe {
+        libc::signal(libc::SIGINT, libc::SIG_IGN);
+        libc::signal(libc::SIGQUIT, libc::SIG_IGN);
+        libc::signal(libc::SIGTSTP, libc::SIG_IGN);
+    }
+
     let mut shell = Shell::new();
     shell.load_rc();
 
     loop {
         reap_jobs(&mut shell);
-        print!("etash: ");
+        print!("{} ? ", format_cwd(&shell));
         let _ = stdout().flush();
         let s = read_line();
         if s.is_empty() {

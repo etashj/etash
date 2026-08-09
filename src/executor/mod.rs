@@ -5,6 +5,9 @@ use crate::lexer::WordSegment;
 use crate::parser::ast::{AST, Redirect};
 use crate::shell::Shell;
 
+extern crate libc;
+
+use std::os::unix::process::CommandExt;
 use std::process::Command;
 
 /// Polls all background jobs and reaps any that have finished.
@@ -84,8 +87,20 @@ fn run_cmd(
         return 1;
     }
 
+    if let Some(code) = builtin::run_builtin(&expanded_argv, shell) {
+        return code;
+    }
+
     let mut cmd = Command::new(&expanded_argv[0]);
     cmd.args(&expanded_argv[1..]);
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::signal(libc::SIGINT, libc::SIG_DFL);
+            libc::signal(libc::SIGQUIT, libc::SIG_DFL);
+            libc::signal(libc::SIGTSTP, libc::SIG_DFL);
+            Ok(())
+        });
+    }
 
     if let Err(e) = redir::apply_redirects(&mut cmd, redirs, shell) {
         eprintln!("redirect error: {e}");
