@@ -79,7 +79,7 @@ mod metacharacters {
                 Word(vec![Expandable("a".into())]),
                 Token::RedirectOut(None),
                 Word(vec![Expandable("b".into())]),
-                Token::RedirectAppend,
+                Token::RedirectAppend(None),
                 Word(vec![Expandable("c".into())]),
                 Token::RedirectIn,
                 Word(vec![Expandable("d".into())]),

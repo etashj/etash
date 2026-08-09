@@ -132,14 +132,28 @@ impl Parser {
                     }
                 }
 
-                Token::RedirectAppend => match tokens.get(i) {
-                    Some(Token::Word(segs)) => {
-                        self.working_redirs
-                            .push(Redirect::Append(segs.clone(), None));
-                        i += 1;
+                Token::RedirectAppend(fd) => {
+                    let fd = *fd;
+                    match tokens.get(i) {
+                        Some(Token::Word(segs)) => {
+                            self.working_redirs.push(Redirect::Append(segs.clone(), fd));
+                            i += 1;
+                        }
+                        _ => return Err(ParserError::UnexpectedEnd),
                     }
-                    _ => return Err(ParserError::UnexpectedEnd),
-                },
+                }
+
+                Token::RedirectDupOut(fd) => {
+                    let target = fd.unwrap_or(1);
+                    match tokens.get(i) {
+                        Some(Token::Word(segs)) if is_digit_word(segs) => {
+                            let source = digit_word_value(segs);
+                            self.working_redirs.push(Redirect::Dup { target, source });
+                            i += 1;
+                        }
+                        _ => return Err(ParserError::UnexpectedEnd),
+                    }
+                }
 
                 Token::Semicolon => {
                     self.flush();
@@ -226,4 +240,16 @@ impl Parser {
 
 pub fn parse(tokens: Vec<Token>) -> Result<AST, ParserError> {
     Parser::new().parse(tokens)
+}
+
+fn is_digit_word(segs: &[WordSegment]) -> bool {
+    segs.len() == 1
+        && matches!(&segs[0], WordSegment::Expandable(s) if s.chars().all(|c| c.is_ascii_digit()))
+}
+
+fn digit_word_value(segs: &[WordSegment]) -> u32 {
+    match &segs[0] {
+        WordSegment::Expandable(s) => s.parse().unwrap_or(0),
+        _ => 0,
+    }
 }

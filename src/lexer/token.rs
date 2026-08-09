@@ -25,7 +25,8 @@ pub enum Token {
     Pipe,                     // |
     RedirectIn,               //
     RedirectOut(Option<u32>), // >
-    RedirectAppend,           // >>
+    RedirectAppend(Option<u32>), // >>
+    RedirectDupOut(Option<u32>), // [n]>&
     And,                      // &&
     Or,                       // ||
     Semicolon,                // ;

@@ -107,11 +107,16 @@ pub fn tokenize(
             }
             '>' => {
                 chars.next();
+                let fd = pop_digit_word(&mut tokens);
                 if chars.peek() == Some(&'>') {
                     chars.next();
-                    tokens.push(Token::RedirectAppend);
+                    tokens.push(Token::RedirectAppend(fd));
+                } else if chars.peek() == Some(&'&') {
+                    chars.next();
+                    tokens.push(Token::RedirectDupOut(fd));
+                    chars.reset_peek();
                 } else {
-                    tokens.push(Token::RedirectOut(None));
+                    tokens.push(Token::RedirectOut(fd));
                     chars.reset_peek();
                 }
             }
@@ -146,4 +151,19 @@ pub fn tokenize(
         Some(Token::Or) => return (tokens, Open(CmdOr)),
         _ => return (tokens, Closed),
     }
+}
+
+/// If the last token is a bare all-digit word, pop and return its value as an fd number.
+fn pop_digit_word(tokens: &mut Vec<Token>) -> Option<u32> {
+    if let Some(Token::Word(segs)) = tokens.last() {
+        if segs.len() == 1 {
+            if let token::WordSegment::Expandable(s) = &segs[0] {
+                if let Ok(n) = s.parse::<u32>() {
+                    tokens.pop();
+                    return Some(n);
+                }
+            }
+        }
+    }
+    None
 }

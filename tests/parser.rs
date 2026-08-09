@@ -257,7 +257,7 @@ mod redirects {
 
     #[test]
     fn redirect_append() {
-        let tokens = vec![w("echo"), w("hi"), Token::RedirectAppend, w("log.txt")];
+        let tokens = vec![w("echo"), w("hi"), Token::RedirectAppend(None), w("log.txt")];
         assert_eq!(
             parse(tokens),
             Ok(cmd_r(

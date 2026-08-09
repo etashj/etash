@@ -21,6 +21,8 @@ pub enum Redirect {
     In(Vec<WordSegment>),
     Out(Vec<WordSegment>, Option<u32>),
     Append(Vec<WordSegment>, Option<u32>),
+    /// `[n]>&m` — duplicate fd `source` into fd `target` (dup2(source, target))
+    Dup { target: u32, source: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq)]
