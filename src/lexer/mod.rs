@@ -113,17 +113,12 @@ pub fn tokenize(
                 chars.next();
                 let fd = if !after_space { pop_digit_word(&mut tokens) } else { None };
                 after_space = false;
-                if chars.peek() == Some(&'>') {
-                    chars.next();
-                    tokens.push(Token::RedirectAppend(fd));
-                } else if chars.peek() == Some(&'&') {
-                    chars.next();
-                    tokens.push(Token::RedirectDupOut(fd));
-                    chars.reset_peek();
-                } else {
-                    tokens.push(Token::RedirectOut(fd));
-                    chars.reset_peek();
+                match chars.peek().copied() {
+                    Some('>') => { chars.next(); tokens.push(Token::RedirectAppend(fd)); }
+                    Some('&') => { chars.next(); tokens.push(Token::RedirectDupOut(fd)); }
+                    _ => { tokens.push(Token::RedirectOut(fd)); }
                 }
+                chars.reset_peek();
             }
             '<' => {
                 chars.next();
