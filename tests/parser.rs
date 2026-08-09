@@ -6,6 +6,10 @@ fn w(s: &str) -> Token {
     Token::Word(vec![WordSegment::Literal(s.to_string())])
 }
 
+fn ew(s: &str) -> Token {
+    Token::Word(vec![WordSegment::Expandable(s.to_string())])
+}
+
 fn segs(s: &str) -> Vec<WordSegment> {
     vec![WordSegment::Literal(s.to_string())]
 }
@@ -286,6 +290,59 @@ mod redirects {
                 ]
             ))
         );
+    }
+
+    #[test]
+    fn redirect_append_with_fd() {
+        let tokens = vec![w("cmd"), Token::RedirectAppend(Some(2)), w("err.log")];
+        assert_eq!(
+            parse(tokens),
+            Ok(cmd_r(
+                &["cmd"],
+                vec![Redirect::Append(segs("err.log"), Some(2))]
+            ))
+        );
+    }
+
+    #[test]
+    fn fd_dup_stderr_to_stdout() {
+        // 2>&1 — duplicate stdout into stderr
+        let tokens = vec![w("cmd"), Token::RedirectDupOut(Some(2)), ew("1")];
+        assert_eq!(
+            parse(tokens),
+            Ok(cmd_r(
+                &["cmd"],
+                vec![Redirect::Dup { target: 2, source: 1 }]
+            ))
+        );
+    }
+
+    #[test]
+    fn fd_dup_default_target() {
+        // >&2 — duplicate fd 2 into stdout (target defaults to 1)
+        let tokens = vec![w("cmd"), Token::RedirectDupOut(None), ew("2")];
+        assert_eq!(
+            parse(tokens),
+            Ok(cmd_r(
+                &["cmd"],
+                vec![Redirect::Dup { target: 1, source: 2 }]
+            ))
+        );
+    }
+
+    #[test]
+    fn fd_dup_missing_source_is_error() {
+        assert_eq!(
+            parse(vec![w("cmd"), Token::RedirectDupOut(Some(2))]),
+            Err(ParserError::UnexpectedEnd)
+        );
+    }
+
+    #[test]
+    fn fd_dup_non_digit_source_is_error() {
+        // 2>&file is not valid
+        let tokens = vec![w("cmd"), Token::RedirectDupOut(Some(2)), w("file")];
+        assert_eq!(parse(tokens), Err(ParserError::UnexpectedEnd));
     }
 
     #[test]

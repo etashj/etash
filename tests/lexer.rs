@@ -86,6 +86,87 @@ mod metacharacters {
             ]
         );
     }
+
+    #[test]
+    fn fd_redirect_out() {
+        let (tokens, _) = tokenize_line("cmd 2>err.txt");
+        assert_eq!(
+            tokens,
+            vec![
+                Word(vec![Expandable("cmd".into())]),
+                Token::RedirectOut(Some(2)),
+                Word(vec![Expandable("err.txt".into())]),
+            ]
+        );
+    }
+
+    #[test]
+    fn fd_redirect_append() {
+        let (tokens, _) = tokenize_line("cmd 2>>err.txt");
+        assert_eq!(
+            tokens,
+            vec![
+                Word(vec![Expandable("cmd".into())]),
+                Token::RedirectAppend(Some(2)),
+                Word(vec![Expandable("err.txt".into())]),
+            ]
+        );
+    }
+
+    #[test]
+    fn fd_dup_out() {
+        let (tokens, _) = tokenize_line("cmd 2>&1");
+        assert_eq!(
+            tokens,
+            vec![
+                Word(vec![Expandable("cmd".into())]),
+                Token::RedirectDupOut(Some(2)),
+                Word(vec![Expandable("1".into())]),
+            ]
+        );
+    }
+
+    #[test]
+    fn dup_out_no_fd_prefix() {
+        let (tokens, _) = tokenize_line("cmd >&2");
+        assert_eq!(
+            tokens,
+            vec![
+                Word(vec![Expandable("cmd".into())]),
+                Token::RedirectDupOut(None),
+                Word(vec![Expandable("2".into())]),
+            ]
+        );
+    }
+
+    #[test]
+    fn digit_with_space_before_redirect_is_word() {
+        // "echo 2 > file" — space between 2 and > means 2 is an argument, not an fd
+        let (tokens, _) = tokenize_line("echo 2 > file");
+        assert_eq!(
+            tokens,
+            vec![
+                Word(vec![Expandable("echo".into())]),
+                Word(vec![Expandable("2".into())]),
+                Token::RedirectOut(None),
+                Word(vec![Expandable("file".into())]),
+            ]
+        );
+    }
+
+    #[test]
+    fn non_digit_word_before_redirect_is_word() {
+        // "abc2>file" — not all digits, so abc2 is an argument
+        let (tokens, _) = tokenize_line("abc2>file");
+        assert_eq!(
+            tokens,
+            vec![
+                Word(vec![Expandable("abc2".into())]),
+                Token::RedirectOut(None),
+                Word(vec![Expandable("file".into())]),
+            ]
+        );
+    }
 }
 
 mod quotes {

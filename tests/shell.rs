@@ -116,4 +116,30 @@ mod expand {
             "Hello, alice!"
         );
     }
+
+    #[test]
+    fn pid_var() {
+        let s = Shell::from_vars(&[]);
+        let result = s.expand_word(&[exp("$$")]);
+        assert!(!result.is_empty());
+        assert!(result.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn tilde_mid_word_not_expanded() {
+        let s = Shell::from_vars(&[("HOME", "/home/user")]);
+        assert_eq!(s.expand_word(&[exp("foo~bar")]), "foo~bar");
+    }
+
+    #[test]
+    fn var_with_digits_in_name() {
+        let s = Shell::from_vars(&[("VAR1", "hello")]);
+        assert_eq!(s.expand_word(&[exp("$VAR1")]), "hello");
+    }
+
+    #[test]
+    fn braced_var_adjacent_text() {
+        let s = Shell::from_vars(&[("A", "x")]);
+        assert_eq!(s.expand_word(&[exp("${A}${A}")]), "xx");
+    }
 }
