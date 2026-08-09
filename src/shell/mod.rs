@@ -1,4 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    process::Child,
+};
 
 use crate::lexer::WordSegment;
 
@@ -12,6 +16,8 @@ use crate::lexer::WordSegment;
 pub struct Shell {
     vars: HashMap<String, String>,
     exported: HashSet<String>,
+    processes: HashMap<u32, Child>,
+    pub cwd: PathBuf,
     /// Exit status of the last foreground command ($?).
     pub status: i32,
 }
@@ -28,6 +34,8 @@ impl Shell {
         let mut shell = Shell {
             vars: HashMap::new(),
             exported: HashSet::new(),
+            processes: HashMap::new(),
+            cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
             status: 0,
         };
         for (k, v) in std::env::vars() {
@@ -86,10 +94,24 @@ impl Shell {
         self.exported.insert(name);
     }
 
+    pub fn add_ps(&mut self, c: Child) {
+        self.processes.insert(c.id(), c);
+    }
+
+    pub fn remove_ps(&mut self, pid: u32) -> Option<Child> {
+        self.processes.remove(&pid)
+    }
+
+    pub fn iter_jobs_mut(&mut self) -> impl Iterator<Item = (&u32, &mut Child)> {
+        self.processes.iter_mut()
+    }
+
     pub fn from_vars(vars: &[(&str, &str)]) -> Self {
         let mut shell = Shell {
             vars: HashMap::new(),
             exported: HashSet::new(),
+            processes: HashMap::new(),
+            cwd: PathBuf::from("/"),
             status: 0,
         };
         for (k, v) in vars {
@@ -124,6 +146,11 @@ impl Shell {
                 WordSegment::Literal(s) => result.push_str(s),
                 WordSegment::Expandable(s) => result.push_str(&self.expand_str(s)),
             }
+        }
+        // Tilde expansion: leading ~ replaced with $HOME (or / if unset)
+        if result.starts_with('~') {
+            let home = self.get("HOME").unwrap_or("/");
+            result = format!("{}{}", home, &result[1..]);
         }
         result
     }

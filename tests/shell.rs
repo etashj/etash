@@ -54,6 +54,24 @@ mod expand {
     use super::*;
 
     #[test]
+    fn tilde_expands_to_home() {
+        let s = Shell::from_vars(&[("HOME", "/home/user")]);
+        assert_eq!(s.expand_word(&[exp("~/bin")]), "/home/user/bin");
+    }
+
+    #[test]
+    fn tilde_alone_expands_to_home() {
+        let s = Shell::from_vars(&[("HOME", "/home/user")]);
+        assert_eq!(s.expand_word(&[exp("~")]), "/home/user");
+    }
+
+    #[test]
+    fn tilde_without_home_falls_back_to_root() {
+        let s = Shell::from_vars(&[]);
+        assert_eq!(s.expand_word(&[exp("~/bin")]), "//bin");
+    }
+
+    #[test]
     fn literal_passthrough() {
         let s = Shell::from_vars(&[]);
         assert_eq!(s.expand_word(&[lit("hello world")]), "hello world");
